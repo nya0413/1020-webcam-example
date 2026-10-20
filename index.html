@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="실시간 날씨 정보를 보여주는 대시보드. Open-Meteo API를 활용한 오늘의 날씨, 시간별 예보, 주간 예보를 제공합니다." />
+  <title>오늘의 날씨 | Weather Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== CSS Reset & Variables ===== */
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --glass-bg: rgba(255, 255, 255, 0.08);
+      --glass-border: rgba(255, 255, 255, 0.12);
+      --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+      --text-primary: #f0f0f0;
+      --text-secondary: rgba(240, 240, 240, 0.65);
+      --text-muted: rgba(240, 240, 240, 0.4);
+      --accent-warm: #ffa94d;
+      --accent-cool: #74c0fc;
+      --accent-rain: #69b7ff;
+      --accent-sun: #ffe066;
+      --radius-sm: 12px;
+      --radius-md: 20px;
+      --radius-lg: 28px;
+      --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ===== Background ===== */
+    body {
+      font-family: var(--font-main);
+      min-height: 100vh;
+      color: var(--text-primary);
+      overflow-x: hidden;
+      transition: background 1s ease;
+    }
+
+    body.weather-clear {
+      background: linear-gradient(135deg, #1a1a3e 0%, #2d1b69 30%, #4a2c8a 60%, #e8825a 85%, #f5a623 100%);
+    }
+    body.weather-cloudy {
+      background: linear-gradient(135deg, #1e293b 0%, #334155 40%, #475569 70%, #64748b 100%);
+    }
+    body.weather-rainy {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 35%, #2d5a87 65%, #3b6f9e 100%);
+    }
+    body.weather-snowy {
+      background: linear-gradient(135deg, #1e293b 0%, #334166 30%, #4a6fa5 60%, #8ab4d7 100%);
+    }
+    body.weather-default {
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    }
+
+    /* Animated background orbs */
+    .bg-orbs {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .bg-orbs::before,
+    .bg-orbs::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.3;
+      animation: floatOrb 12s ease-in-out infinite alternate;
+    }
+    .bg-orbs::before {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(255, 169, 77, 0.4), transparent);
+      top: -100px;
+      right: -100px;
+    }
+    .bg-orbs::after {
+      width: 350px;
+      height: 350px;
+      background: radial-gradient(circle, rgba(116, 192, 252, 0.35), transparent);
+      bottom: -80px;
+      left: -80px;
+      animation-delay: -6s;
+    }
+
+    @keyframes floatOrb {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(40px, -30px) scale(1.15); }
+    }
+
+    /* ===== Layout ===== */
+    .app-container {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+    }
+
+    /* ===== Header ===== */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 36px;
+      animation: fadeSlideDown 0.6s ease-out;
+    }
+    .header-left h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .header-left p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .location-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 50px;
+      padding: 8px 18px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      backdrop-filter: blur(12px);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .location-badge:hover {
+      background: rgba(255, 255, 255, 0.14);
+      transform: translateY(-1px);
+    }
+    .location-badge svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* ===== Glass Card ===== */
+    .glass-card {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: var(--glass-shadow);
+      transition: var(--transition);
+    }
+    .glass-card:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.18);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    /* ===== Main Weather Card ===== */
+    .main-weather {
+      padding: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+      animation: fadeSlideUp 0.7s ease-out;
+    }
+    .main-weather-left {
+      flex: 1;
+    }
+    .weather-icon-main {
+      font-size: 5.5rem;
+      line-height: 1;
+      margin-bottom: 8px;
+      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+      animation: gentleBounce 3s ease-in-out infinite;
+    }
+    @keyframes gentleBounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+    .temp-main {
+      font-size: 5rem;
+      font-weight: 800;
+      letter-spacing: -3px;
+      line-height: 1;
+      background: linear-gradient(135deg, #ffffff, rgba(255, 255, 255, 0.7));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .temp-main .unit {
+      font-size: 2rem;
+      font-weight: 500;
+      letter-spacing: 0;
+      vertical-align: super;
+    }
+    .weather-desc {
+      font-size: 1.2rem;
+      font-weight: 500;
+      margin-top: 6px;
+      color: var(--text-primary);
+    }
+    .feels-like {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .main-weather-right {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 200px;
+    }
+    .detail-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .detail-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+    .detail-text .label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    .detail-text .value {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    /* ===== Section Title ===== */
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: var(--text-secondary);
+      letter-spacing: 0.5px;
+    }
+
+    /* ===== Hourly Forecast ===== */
+    .hourly-section {
+      margin-bottom: 24px;
+      animation: fadeSlideUp 0.8s ease-out;
+    }
+    .hourly-scroll {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      scroll-snap-type: x mandatory;
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .hourly-scroll::-webkit-scrollbar { display: none; }
+    .hourly-item {
+      flex-shrink: 0;
+      scroll-snap-align: start;
+      padding: 16px 18px;
+      text-align: center;
+      min-width: 85px;
+      border-radius: var(--radius-md);
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(12px);
+      transition: var(--transition);
+    }
+    .hourly-item.now {
+      background: rgba(255, 169, 77, 0.15);
+      border-color: rgba(255, 169, 77, 0.3);
+    }
+    .hourly-item:hover {
+      background: rgba(255, 255, 255, 0.12);
+      transform: translateY(-3px);
+    }
+    .hourly-time {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    .hourly-icon {
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+    }
+    .hourly-temp {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    /* ===== Weekly Forecast ===== */
+    .weekly-section {
+      animation: fadeSlideUp 0.9s ease-out;
+    }
+    .weekly-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .weekly-item {
+      display: grid;
+      grid-template-columns: 100px 40px 1fr 80px;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      border-radius: var(--radius-sm);
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(12px);
+      transition: var(--transition);
+    }
+    .weekly-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateX(4px);
+    }
+    .weekly-day {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .weekly-day.today {
+      color: var(--accent-warm);
+    }
+    .weekly-icon {
+      font-size: 1.4rem;
+      text-align: center;
+    }
+    .weekly-bar-container {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+    .weekly-bar {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--accent-cool), var(--accent-warm));
+      transition: width 1s ease-out;
+    }
+    .weekly-temps {
+      text-align: right;
+      font-size: 0.85rem;
+    }
+    .weekly-temps .high {
+      font-weight: 700;
+    }
+    .weekly-temps .low {
+      color: var(--text-secondary);
+      margin-left: 8px;
+    }
+
+    /* ===== Loading State ===== */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      transition: opacity 0.6s ease, visibility 0.6s ease;
+    }
+    .loading-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: var(--accent-warm);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      margin-top: 18px;
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    /* ===== Error State ===== */
+    .error-message {
+      text-align: center;
+      padding: 60px 30px;
+      animation: fadeSlideUp 0.6s ease-out;
+    }
+    .error-message .error-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+    }
+    .error-message h2 {
+      font-size: 1.3rem;
+      margin-bottom: 8px;
+    }
+    .error-message p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      max-width: 400px;
+      margin: 0 auto 20px;
+    }
+    .retry-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 24px;
+      border: 1px solid var(--glass-border);
+      border-radius: 50px;
+      background: var(--glass-bg);
+      color: var(--text-primary);
+      font-family: var(--font-main);
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      transition: var(--transition);
+    }
+    .retry-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      transform: translateY(-1px);
+    }
+
+    /* ===== Animations ===== */
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeSlideDown {
+      from { opacity: 0; transform: translateY(-15px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+      .app-container { padding: 20px 16px 40px; }
+      .main-weather {
+        flex-direction: column;
+        padding: 28px 24px;
+        text-align: center;
+      }
+      .main-weather-right {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 16px;
+        min-width: auto;
+      }
+      .temp-main { font-size: 3.5rem; }
+      .weather-icon-main { font-size: 4rem; }
+      .weekly-item {
+        grid-template-columns: 70px 35px 1fr 70px;
+        padding: 12px 14px;
+        gap: 8px;
+      }
+      .header { flex-direction: column; gap: 12px; align-items: flex-start; }
+    }
+
+    /* ===== City Search ===== */
+    .search-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 120px;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      opacity: 0;
+      visibility: hidden;
+      transition: var(--transition);
+    }
+    .search-modal.active {
+      opacity: 1;
+      visibility: visible;
+    }
+    .search-box {
+      width: 90%;
+      max-width: 480px;
+      background: rgba(30, 30, 50, 0.95);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      padding: 8px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      transform: translateY(-10px) scale(0.98);
+      transition: var(--transition);
+    }
+    .search-modal.active .search-box {
+      transform: translateY(0) scale(1);
+    }
+    .search-input {
+      width: 100%;
+      padding: 14px 18px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-main);
+      font-size: 1rem;
+      color: var(--text-primary);
+      outline: none;
+      transition: var(--transition);
+    }
+    .search-input::placeholder {
+      color: var(--text-muted);
+    }
+    .search-input:focus {
+      border-color: rgba(255, 169, 77, 0.4);
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .search-results {
+      max-height: 240px;
+      overflow-y: auto;
+      margin-top: 4px;
+    }
+    .search-result-item {
+      padding: 12px 18px;
+      cursor: pointer;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      transition: var(--transition);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .search-result-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .search-result-item .city-name {
+      font-weight: 500;
+    }
+    .search-result-item .country {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body class="weather-default">
+  <div class="bg-orbs"></div>
+
+  <!-- Loading -->
+  <div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <p class="loading-text">날씨 정보를 불러오는 중...</p>
+  </div>
+
+  <!-- Search Modal -->
+  <div class="search-modal" id="searchModal">
+    <div class="search-box">
+      <input
+        type="text"
+        class="search-input"
+        id="searchInput"
+        placeholder="도시 이름을 검색하세요..."
+        autocomplete="off"
+      />
+      <div class="search-results" id="searchResults"></div>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div class="app-container" id="app" style="display:none;">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <h1>오늘의 날씨</h1>
+        <p id="dateText"></p>
+      </div>
+      <button class="location-badge" id="locationBadge" aria-label="도시 검색">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+          <circle cx="12" cy="9" r="2.5"/>
+        </svg>
+        <span id="cityName">서울</span>
+      </button>
+    </header>
+
+    <!-- Main Weather -->
+    <div class="glass-card main-weather" id="mainWeather">
+      <div class="main-weather-left">
+        <div class="weather-icon-main" id="mainIcon">☀️</div>
+        <div class="temp-main"><span id="mainTemp">--</span><span class="unit">°C</span></div>
+        <div class="weather-desc" id="mainDesc">--</div>
+        <div class="feels-like">체감 <span id="feelsLike">--</span>°C</div>
+      </div>
+      <div class="main-weather-right">
+        <div class="detail-item">
+          <div class="detail-icon">💧</div>
+          <div class="detail-text">
+            <div class="label">습도</div>
+            <div class="value"><span id="humidity">--</span>%</div>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-icon">💨</div>
+          <div class="detail-text">
+            <div class="label">풍속</div>
+            <div class="value"><span id="windSpeed">--</span> km/h</div>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-icon">🌧️</div>
+          <div class="detail-text">
+            <div class="label">강수확률</div>
+            <div class="value"><span id="precipitation">--</span>%</div>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-icon">☀️</div>
+          <div class="detail-text">
+            <div class="label">UV 지수</div>
+            <div class="value"><span id="uvIndex">--</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hourly Forecast -->
+    <div class="hourly-section">
+      <h2 class="section-title">⏱ 시간별 예보</h2>
+      <div class="hourly-scroll" id="hourlyScroll"></div>
+    </div>
+
+    <!-- Weekly Forecast -->
+    <div class="weekly-section">
+      <h2 class="section-title">📅 7일 예보</h2>
+      <div class="weekly-grid" id="weeklyGrid"></div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Weather Code Mapping =====
+    const WMO_CODES = {
+      0: { desc: '맑음', icon: '☀️', bg: 'clear' },
+      1: { desc: '대체로 맑음', icon: '🌤️', bg: 'clear' },
+      2: { desc: '부분적 흐림', icon: '⛅', bg: 'cloudy' },
+      3: { desc: '흐림', icon: '☁️', bg: 'cloudy' },
+      45: { desc: '안개', icon: '🌫️', bg: 'cloudy' },
+      48: { desc: '짙은 안개', icon: '🌫️', bg: 'cloudy' },
+      51: { desc: '가벼운 이슬비', icon: '🌦️', bg: 'rainy' },
+      53: { desc: '이슬비', icon: '🌦️', bg: 'rainy' },
+      55: { desc: '강한 이슬비', icon: '🌧️', bg: 'rainy' },
+      61: { desc: '가벼운 비', icon: '🌧️', bg: 'rainy' },
+      63: { desc: '비', icon: '🌧️', bg: 'rainy' },
+      65: { desc: '폭우', icon: '⛈️', bg: 'rainy' },
+      66: { desc: '가벼운 진눈깨비', icon: '🌨️', bg: 'snowy' },
+      67: { desc: '진눈깨비', icon: '🌨️', bg: 'snowy' },
+      71: { desc: '가벼운 눈', icon: '🌨️', bg: 'snowy' },
+      73: { desc: '눈', icon: '❄️', bg: 'snowy' },
+      75: { desc: '폭설', icon: '❄️', bg: 'snowy' },
+      77: { desc: '싸락눈', icon: '🌨️', bg: 'snowy' },
+      80: { desc: '가벼운 소나기', icon: '🌦️', bg: 'rainy' },
+      81: { desc: '소나기', icon: '🌧️', bg: 'rainy' },
+      82: { desc: '강한 소나기', icon: '⛈️', bg: 'rainy' },
+      85: { desc: '가벼운 눈소나기', icon: '🌨️', bg: 'snowy' },
+      86: { desc: '눈소나기', icon: '❄️', bg: 'snowy' },
+      95: { desc: '뇌우', icon: '⛈️', bg: 'rainy' },
+      96: { desc: '우박 뇌우', icon: '⛈️', bg: 'rainy' },
+      99: { desc: '강한 우박 뇌우', icon: '⛈️', bg: 'rainy' },
+    };
+
+    function getWeatherInfo(code) {
+      return WMO_CODES[code] || { desc: '알 수 없음', icon: '🌡️', bg: 'default' };
+    }
+
+    const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+
+    // ===== State =====
+    let currentLat = 37.5665; // Seoul default
+    let currentLon = 126.978;
+    let currentCity = '서울';
+    let searchTimeout = null;
+
+    // ===== DOM References =====
+    const $loading = document.getElementById('loading');
+    const $app = document.getElementById('app');
+    const $dateText = document.getElementById('dateText');
+    const $cityName = document.getElementById('cityName');
+    const $mainIcon = document.getElementById('mainIcon');
+    const $mainTemp = document.getElementById('mainTemp');
+    const $mainDesc = document.getElementById('mainDesc');
+    const $feelsLike = document.getElementById('feelsLike');
+    const $humidity = document.getElementById('humidity');
+    const $windSpeed = document.getElementById('windSpeed');
+    const $precipitation = document.getElementById('precipitation');
+    const $uvIndex = document.getElementById('uvIndex');
+    const $hourlyScroll = document.getElementById('hourlyScroll');
+    const $weeklyGrid = document.getElementById('weeklyGrid');
+    const $searchModal = document.getElementById('searchModal');
+    const $searchInput = document.getElementById('searchInput');
+    const $searchResults = document.getElementById('searchResults');
+    const $locationBadge = document.getElementById('locationBadge');
+
+    // ===== Set Date =====
+    function setDate() {
+      const now = new Date();
+      const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+      $dateText.textContent = now.toLocaleDateString('ko-KR', options);
+    }
+
+    // ===== Fetch Weather Data from Open-Meteo =====
+    async function fetchWeather(lat, lon) {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+        + `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m`
+        + `&hourly=temperature_2m,weather_code,precipitation_probability`
+        + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max`
+        + `&timezone=auto&forecast_days=7`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Weather API error');
+      return res.json();
+    }
+
+    // ===== Render Weather =====
+    function renderWeather(data) {
+      const { current, hourly, daily } = data;
+
+      // Current
+      const weatherInfo = getWeatherInfo(current.weather_code);
+      document.body.className = `weather-${weatherInfo.bg}`;
+
+      $mainIcon.textContent = weatherInfo.icon;
+      $mainTemp.textContent = Math.round(current.temperature_2m);
+      $mainDesc.textContent = weatherInfo.desc;
+      $feelsLike.textContent = Math.round(current.apparent_temperature);
+      $humidity.textContent = current.relative_humidity_2m;
+      $windSpeed.textContent = Math.round(current.wind_speed_10m);
+
+      // Precipitation from hourly (current hour)
+      const nowHour = new Date().getHours();
+      const todayStr = new Date().toISOString().split('T')[0];
+      const currentHourIdx = hourly.time.findIndex(t => t.startsWith(todayStr) && parseInt(t.split('T')[1]) === nowHour);
+      $precipitation.textContent = currentHourIdx >= 0 ? hourly.precipitation_probability[currentHourIdx] : '--';
+
+      // UV from daily (today)
+      $uvIndex.textContent = daily.uv_index_max[0] !== null ? daily.uv_index_max[0].toFixed(1) : '--';
+
+      // Hourly (next 24 hours from now)
+      renderHourly(hourly, currentHourIdx >= 0 ? currentHourIdx : 0);
+
+      // Weekly
+      renderWeekly(daily);
+    }
+
+    function renderHourly(hourly, startIdx) {
+      $hourlyScroll.innerHTML = '';
+      const count = Math.min(24, hourly.time.length - startIdx);
+      for (let i = 0; i < count; i++) {
+        const idx = startIdx + i;
+        const time = new Date(hourly.time[idx]);
+        const info = getWeatherInfo(hourly.weather_code[idx]);
+        const isNow = i === 0;
+
+        const el = document.createElement('div');
+        el.className = `hourly-item${isNow ? ' now' : ''}`;
+        el.innerHTML = `
+          <div class="hourly-time">${isNow ? '지금' : `${time.getHours()}시`}</div>
+          <div class="hourly-icon">${info.icon}</div>
+          <div class="hourly-temp">${Math.round(hourly.temperature_2m[idx])}°</div>
+        `;
+        el.style.animationDelay = `${i * 0.03}s`;
+        $hourlyScroll.appendChild(el);
+      }
+    }
+
+    function renderWeekly(daily) {
+      $weeklyGrid.innerHTML = '';
+      const allTemps = [...daily.temperature_2m_min, ...daily.temperature_2m_max];
+      const globalMin = Math.min(...allTemps);
+      const globalMax = Math.max(...allTemps);
+      const range = globalMax - globalMin || 1;
+
+      for (let i = 0; i < daily.time.length; i++) {
+        const date = new Date(daily.time[i] + 'T00:00:00');
+        const info = getWeatherInfo(daily.weather_code[i]);
+        const isToday = i === 0;
+        const dayName = isToday ? '오늘' : `${DAY_NAMES[date.getDay()]}요일`;
+
+        const low = daily.temperature_2m_min[i];
+        const high = daily.temperature_2m_max[i];
+        const barLeft = ((low - globalMin) / range) * 100;
+        const barWidth = ((high - low) / range) * 100;
+
+        const el = document.createElement('div');
+        el.className = 'weekly-item';
+        el.innerHTML = `
+          <div class="weekly-day ${isToday ? 'today' : ''}">${dayName}</div>
+          <div class="weekly-icon">${info.icon}</div>
+          <div class="weekly-bar-container">
+            <div class="weekly-bar" style="margin-left:${barLeft}%;width:0%;" data-width="${Math.max(barWidth, 8)}"></div>
+          </div>
+          <div class="weekly-temps">
+            <span class="high">${Math.round(high)}°</span>
+            <span class="low">${Math.round(low)}°</span>
+          </div>
+        `;
+        el.style.animationDelay = `${i * 0.05}s`;
+        $weeklyGrid.appendChild(el);
+      }
+
+      // Animate bars
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.weekly-bar').forEach(bar => {
+          bar.style.width = bar.dataset.width + '%';
+        });
+      });
+    }
+
+    // ===== City Search (Open-Meteo Geocoding) =====
+    async function searchCity(query) {
+      if (!query || query.length < 2) {
+        $searchResults.innerHTML = '';
+        return;
+      }
+      try {
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=ko`);
+        const data = await res.json();
+        if (!data.results || data.results.length === 0) {
+          $searchResults.innerHTML = '<div style="padding:12px 18px;color:var(--text-muted);font-size:0.85rem;">검색 결과가 없습니다</div>';
+          return;
+        }
+        $searchResults.innerHTML = data.results.map((r, i) => `
+          <div class="search-result-item" data-idx="${i}" data-lat="${r.latitude}" data-lon="${r.longitude}" data-name="${r.name}">
+            <span class="city-name">${r.name}</span>
+            <span class="country">${r.admin1 || ''} ${r.country || ''}</span>
+          </div>
+        `).join('');
+
+        $searchResults.querySelectorAll('.search-result-item').forEach(item => {
+          item.addEventListener('click', () => {
+            currentLat = parseFloat(item.dataset.lat);
+            currentLon = parseFloat(item.dataset.lon);
+            currentCity = item.dataset.name;
+            $cityName.textContent = currentCity;
+            closeSearch();
+            loadWeather();
+          });
+        });
+      } catch (e) {
+        console.error('Search error:', e);
+      }
+    }
+
+    function openSearch() {
+      $searchModal.classList.add('active');
+      $searchInput.value = '';
+      $searchResults.innerHTML = '';
+      setTimeout(() => $searchInput.focus(), 100);
+    }
+
+    function closeSearch() {
+      $searchModal.classList.remove('active');
+    }
+
+    // ===== Geolocation =====
+    function getUserLocation() {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+          resolve(false);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            currentLat = pos.coords.latitude;
+            currentLon = pos.coords.longitude;
+            resolve(true);
+          },
+          () => resolve(false),
+          { timeout: 5000 }
+        );
+      });
+    }
+
+    async function reverseGeocode(lat, lon) {
+      try {
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${lat.toFixed(2)},${lon.toFixed(2)}&count=1&language=ko`);
+        const data = await res.json();
+        if (data.results && data.results.length > 0) {
+          return data.results[0].name;
+        }
+      } catch (e) { /* ignore */ }
+      return null;
+    }
+
+    // ===== Load Weather =====
+    async function loadWeather() {
+      try {
+        $loading.classList.remove('hidden');
+        $app.style.display = 'none';
+
+        const data = await fetchWeather(currentLat, currentLon);
+        renderWeather(data);
+
+        $app.style.display = 'block';
+        $loading.classList.add('hidden');
+      } catch (err) {
+        console.error('Error loading weather:', err);
+        $loading.classList.add('hidden');
+        $app.style.display = 'block';
+        $app.innerHTML = `
+          <div class="error-message glass-card">
+            <div class="error-icon">⚠️</div>
+            <h2>날씨 정보를 불러올 수 없습니다</h2>
+            <p>네트워크 연결을 확인하고 다시 시도해 주세요.</p>
+            <button class="retry-btn" onclick="location.reload()">🔄 다시 시도</button>
+          </div>
+        `;
+      }
+    }
+
+    // ===== Events =====
+    $locationBadge.addEventListener('click', openSearch);
+    $searchModal.addEventListener('click', (e) => {
+      if (e.target === $searchModal) closeSearch();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeSearch();
+    });
+    $searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => searchCity(e.target.value.trim()), 350);
+    });
+
+    // ===== Init =====
+    (async function init() {
+      setDate();
+
+      const gotLocation = await getUserLocation();
+      if (gotLocation) {
+        // Try reverse geocoding for city name
+        const name = await reverseGeocode(currentLat, currentLon);
+        if (name) {
+          currentCity = name;
+          $cityName.textContent = currentCity;
+        } else {
+          $cityName.textContent = '내 위치';
+        }
+      }
+
+      await loadWeather();
+    })();
+  </script>
+</body>
+</html>
